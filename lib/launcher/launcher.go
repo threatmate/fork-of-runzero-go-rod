@@ -281,6 +281,9 @@ func GetExecFlags(conf *Browser) map[flags.Flag][]string {
 	if defaults.Proxy != "" {
 		execFlags[flags.ProxyServer] = []string{defaults.Proxy}
 	}
+	if conf.ProxyBypassList != "" {
+		execFlags[flags.ProxyBypassList] = []string{conf.ProxyBypassList}
+	}
 
 	if conf.WindowWidth != 0 && conf.WindowHeight != 0 {
 		execFlags[flags.WindowSize] = []string{

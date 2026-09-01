@@ -308,6 +308,9 @@ type Browser struct {
 	UID                 int
 	GID                 int
 	NoSandbox           bool
+	// ProxyBypassList is Chrome's --proxy-bypass-list. Empty leaves Chrome's implicit bypasses in
+	// place; "<-loopback>" removes them, which is what a filtering proxy needs.
+	ProxyBypassList string
 	HideWindow          bool
 	VerboseLogging      bool
 	LaunchTimeout       time.Duration
@@ -505,6 +508,14 @@ func WithUID(id int) BrowserOption {
 func WithGID(id int) BrowserOption {
 	return func(b *Browser) {
 		b.GID = id
+	}
+}
+
+// WithProxyBypassList sets Chrome's --proxy-bypass-list. Pass "<-loopback>" to subtract the
+// implicit loopback and link-local exemptions so a proxy can see (and refuse) those requests.
+func WithProxyBypassList(v string) BrowserOption {
+	return func(b *Browser) {
+		b.ProxyBypassList = v
 	}
 }
 
