@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-
 )
 
 type osAttributes struct {
@@ -41,11 +40,22 @@ func (l *Launcher) osSetupCmd(ctx context.Context, cmd *exec.Cmd) error {
 	// correctly when run directly under a profile granting `userns`, and got --no-sandbox anyway
 	// when launched through here.
 	//
-	// Nothing is lost by removing it. Launch() already retries with --no-sandbox after a launch
-	// that actually fails with ErrNoSandbox, so a host where the sandbox genuinely cannot work
-	// still ends up with the flag -- one failed launch later, and only when it is really needed.
-	// The difference is that a host where it CAN work now keeps its sandbox, which for a browser
-	// rendering untrusted pages is the whole point.
+	// What replaces it is a RETRY, and the retry is NOT in this package: it is in
+	// cmd/webshot/chrome, whose Init re-launches with --no-sandbox once a launch has actually
+	// failed with ErrNoSandbox. So a host where the sandbox genuinely cannot work still ends up
+	// with the flag -- one failed launch later, and only when it is really needed -- while a host
+	// where it CAN work keeps its sandbox, which for a browser rendering untrusted pages is the
+	// whole point.
+	//
+	// The consequence, and the reason this is spelled out: a caller that drives lib/launcher
+	// DIRECTLY gets no retry and simply fails to launch on a host with
+	// apparmor_restrict_unprivileged_userns=1. lib/launcher's own TestLaunchUserMode is such a
+	// caller and panics with "No usable sandbox!" on Ubuntu 23.10+ because of this.
+	//
+	// Two things follow. Do not remove the retry in cmd/webshot/chrome believing this package
+	// covers it -- it does not. And do not offer this change upstream as-is; it would break
+	// go-rod's own users. Making it safe for them means moving the ErrNoSandbox retry down into
+	// Launch(), at which point the pre-emptive flag can go for everyone.
 
 	if l.Browser.GetXVFB() {
 		*cmd = *exec.CommandContext(ctx, "xvfb-run", cmd.Args...) //nolint:gosec
