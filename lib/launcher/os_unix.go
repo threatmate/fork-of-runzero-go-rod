@@ -3,7 +3,6 @@
 package launcher
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,11 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 
-	"github.com/runZeroInc/go-rod/lib/launcher/flags"
 )
 
 type osAttributes struct {
@@ -32,14 +29,23 @@ func (l *Launcher) osResolveAttributes() {
 func (l *Launcher) osSetupCmd(ctx context.Context, cmd *exec.Cmd) error {
 	var err error
 
-	// Automatically add --no-sandbox if unprivileged user namespaces are disabled on Linux
-	if _, nsb := l.GetFlags(flags.NoSandbox); runtime.GOOS == "linux" && !nsb {
-		unsDisabled, err := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
-		if err == nil && bytes.HasPrefix(unsDisabled, []byte("1")) {
-			l.logger.Debugf("automatically adding the --no-sandbox flag since unprivileged user namespaces are disabled")
-			cmd.Args = append(cmd.Args, "--no-sandbox")
-		}
-	}
+	// Do NOT pre-emptively add --no-sandbox here.
+	//
+	// This used to read /proc/sys/kernel/apparmor_restrict_unprivileged_userns and append the flag
+	// whenever it was 1, which is the default on Ubuntu 23.10 and later. That sysctl says user
+	// namespaces are restricted SYSTEM-WIDE; it does not say they are unavailable to this
+	// particular binary, which is precisely what an AppArmor profile changes. Chromium's own
+	// guidance is to grant userns to the browser with such a profile
+	// (https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md),
+	// and this check defeated exactly that: measured on Ubuntu 24.04, the binary sandboxes
+	// correctly when run directly under a profile granting `userns`, and got --no-sandbox anyway
+	// when launched through here.
+	//
+	// Nothing is lost by removing it. Launch() already retries with --no-sandbox after a launch
+	// that actually fails with ErrNoSandbox, so a host where the sandbox genuinely cannot work
+	// still ends up with the flag -- one failed launch later, and only when it is really needed.
+	// The difference is that a host where it CAN work now keeps its sandbox, which for a browser
+	// rendering untrusted pages is the whole point.
 
 	if l.Browser.GetXVFB() {
 		*cmd = *exec.CommandContext(ctx, "xvfb-run", cmd.Args...) //nolint:gosec
