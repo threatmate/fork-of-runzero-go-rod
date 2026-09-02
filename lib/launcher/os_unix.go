@@ -48,9 +48,17 @@ func (l *Launcher) osSetupCmd(ctx context.Context, cmd *exec.Cmd) error {
 	// whole point.
 	//
 	// The consequence, and the reason this is spelled out: a caller that drives lib/launcher
-	// DIRECTLY gets no retry and simply fails to launch on a host with
-	// apparmor_restrict_unprivileged_userns=1. lib/launcher's own TestLaunchUserMode is such a
-	// caller and panics with "No usable sandbox!" on Ubuntu 23.10+ because of this.
+	// DIRECTLY gets no retry at all. Where the sandbox really is unavailable to the browser being
+	// launched, that launch returns ErrNoSandbox and that is the end of it.
+	//
+	// "Really unavailable" is NOT the same as "the sysctl is 1", which is the very over-reading
+	// the paragraph above exists to correct. What decides it is whether an AppArmor profile grants
+	// userns to THIS binary, and profiles are per-path: measured on a host with
+	// apparmor_restrict_unprivileged_userns=1 that also ships an /etc/apparmor.d/chrome profile,
+	// lib/launcher's own TestLaunchUserMode still panics with "No usable sandbox!" against this
+	// tree -- because that profile covers the distro's Chrome, not the Chrome-for-Testing binary
+	// the launcher had fetched. A caller whose browser IS covered launches sandboxed and sees
+	// none of this.
 	//
 	// Two things follow. Do not remove the retry in cmd/webshot/chrome believing this package
 	// covers it -- it does not. And do not offer this change upstream as-is; it would break
