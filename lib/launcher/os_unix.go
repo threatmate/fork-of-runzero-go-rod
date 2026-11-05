@@ -129,14 +129,20 @@ func (l *Launcher) osEnsureUserPermissionsBinary(binPath string) error {
 		if err != nil {
 			return err
 		}
-		// Skip a binary any user can already read and run. A chmod is not free even when it
-		// changes nothing: on an overlay filesystem it copies the whole file up into the writable
-		// layer first, and under gVisor (Cloud Run) that layer is memory. For chrome-headless-shell
-		// that was a 202 MiB copy, paid on the first launch as a dropped user in every container.
+		// Skip the chmod only when it would change nothing, i.e. the binary is already exactly
+		// 0755 with no setuid, setgid or sticky bit. A chmod is not free even then: on an overlay
+		// filesystem it copies the whole file up into the writable layer first, and under gVisor
+		// (Cloud Run) that layer is memory. For chrome-headless-shell that was a 202 MiB copy,
+		// paid on the first launch as a dropped user in every container.
+		//
+		// Exactly 0755, not "readable and executable by everyone": the chmod also takes away
+		// group and other write and the setuid bits, and those must still go. A binary the
+		// dropped user could rewrite would let the browser it runs replace the next one.
+		//
 		// Stat rather than info: Walk Lstats its root, so for a symlinked binary info describes
 		// the link, whose mode is always 0777, and Chmod follows it to the target.
 		target, statErr := os.Stat(path)
-		if statErr == nil && target.Mode().Perm()&0o555 == 0o555 {
+		if statErr == nil && target.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0o755 {
 			return nil
 		}
 		_ = os.Chmod(path, 0o755) //nolint:gosec
@@ -177,7 +183,10 @@ func (l *Launcher) osEnsureLeadingPathReadExec(src string) error {
 			return nil
 		}
 		cperm := st.Mode().Perm()
-		// Already traversable by everyone: leave it alone, for the same reason as the binary.
+		// Already traversable by everyone: leave it alone, for the same reason as the binary. The
+		// chmod below would only add bits, so skipping it removes nothing -- except that it would
+		// also clear a sticky or setgid bit, since cperm holds only the permission bits, and on
+		// /tmp, where the default profile lives, that is a bit worth keeping.
 		if cperm&0o111 == 0o111 {
 			continue
 		}
