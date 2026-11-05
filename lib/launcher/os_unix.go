@@ -129,6 +129,16 @@ func (l *Launcher) osEnsureUserPermissionsBinary(binPath string) error {
 		if err != nil {
 			return err
 		}
+		// Skip a binary any user can already read and run. A chmod is not free even when it
+		// changes nothing: on an overlay filesystem it copies the whole file up into the writable
+		// layer first, and under gVisor (Cloud Run) that layer is memory. For chrome-headless-shell
+		// that was a 202 MiB copy, paid on the first launch as a dropped user in every container.
+		// Stat rather than info: Walk Lstats its root, so for a symlinked binary info describes
+		// the link, whose mode is always 0777, and Chmod follows it to the target.
+		target, statErr := os.Stat(path)
+		if statErr == nil && target.Mode().Perm()&0o555 == 0o555 {
+			return nil
+		}
 		_ = os.Chmod(path, 0o755) //nolint:gosec
 		return nil
 	})
@@ -167,6 +177,10 @@ func (l *Launcher) osEnsureLeadingPathReadExec(src string) error {
 			return nil
 		}
 		cperm := st.Mode().Perm()
+		// Already traversable by everyone: leave it alone, for the same reason as the binary.
+		if cperm&0o111 == 0o111 {
+			continue
+		}
 		if err := os.Chmod(pname, cperm|0o111); err != nil { //nolint:gosec
 			l.logger.Errorf("failed to chmod path %s as %o: %s", pname, cperm|0o111, err)
 		}
