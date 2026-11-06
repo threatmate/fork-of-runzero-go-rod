@@ -59,6 +59,14 @@ func writeBinary(t *testing.T, path string, mode os.FileMode) {
 	if err := os.Chmod(path, mode); err != nil {
 		t.Fatal(err)
 	}
+	// A filesystem that silently drops setuid or setgid would leave those cases testing nothing.
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode() != mode {
+		t.Fatalf("set up %s as %v but it is %v", path, mode, st.Mode())
+	}
 }
 
 // A chmod that changes nothing still writes the inode, which is what makes an overlay copy the
@@ -106,6 +114,7 @@ func TestEnsureUserPermissionsBinaryStillSetsEverythingElseTo0755(t *testing.T) 
 		"group writable":  0o775,
 		"setuid":          0o755 | os.ModeSetuid,
 		"setgid":          0o755 | os.ModeSetgid,
+		"sticky":          0o755 | os.ModeSticky,
 		"behind symlink":  0o700,
 		"in a closed dir": 0o700,
 	} {

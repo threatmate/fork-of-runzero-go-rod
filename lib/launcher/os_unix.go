@@ -136,8 +136,8 @@ func (l *Launcher) osEnsureUserPermissionsBinary(binPath string) error {
 		// paid on the first launch as a dropped user in every container.
 		//
 		// Exactly 0755, not "readable and executable by everyone": the chmod also takes away
-		// group and other write and the setuid bits, and those must still go. A binary the
-		// dropped user could rewrite would let the browser it runs replace the next one.
+		// group and other write and the setuid bits, and those must still go. (It does not change
+		// the owner, so a binary owned by the dropped user stays writable by it either way.)
 		//
 		// Stat rather than info: Walk Lstats its root, so for a symlinked binary info describes
 		// the link, whose mode is always 0777, and Chmod follows it to the target.
