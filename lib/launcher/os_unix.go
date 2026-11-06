@@ -81,10 +81,13 @@ func (l *Launcher) getSysProcAttr(uid, gid int) (*syscall.SysProcAttr, error) {
 	// cannot survive a crashed/killed launcher.
 	setPdeathsig(v)
 	if os.Geteuid() == 0 && uid != 0 {
+		// Groups set to an empty list, not NoSetGroups: with NoSetGroups the child keeps the
+		// caller's supplementary groups, and a root caller usually carries group 0, which would
+		// leave the unprivileged browser able to write anything group-root-writable.
 		cred := &syscall.Credential{
-			Uid:         uint32(uid),
-			Gid:         uint32(gid),
-			NoSetGroups: true,
+			Uid:    uint32(uid),
+			Gid:    uint32(gid),
+			Groups: []uint32{},
 		}
 		v.Credential = cred
 	}
