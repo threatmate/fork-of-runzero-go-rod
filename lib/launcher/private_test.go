@@ -51,7 +51,8 @@ func TestLaunchOptions(t *testing.T) {
 
 	g.False(l.Has(flags.Headless))
 
-	g.True(l.Has(flags.NoSandbox))
+	// A container alone does not pre-empt the sandbox (see GetExecFlags).
+	g.False(l.Has(flags.NoSandbox))
 
 	g.True(l.Has("auto-open-devtools-for-tabs"))
 }
