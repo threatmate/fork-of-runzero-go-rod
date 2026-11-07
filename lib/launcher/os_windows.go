@@ -32,9 +32,16 @@ type osAttributes struct {
 
 // osPreferredUsernames is the list of preferred non-SYSTEM accounts to attempt to sudo to
 // when running as SYSTEM under a service.
+//
+// LocalService first. Both have the same local rights, but NetworkService presents the computer's
+// own credentials on the network (DOMAIN\HOST$ on a domain-joined machine) and LocalService
+// presents anonymous ones. Measured on Windows 11: a browser on the NetworkService token answered a
+// single-label intranet host's WWW-Authenticate: Negotiate with an NTLM exchange unprompted. The
+// caller may also switch ambient auth off in Chrome; this makes the account itself have nothing to
+// give if anything ever reaches it.
 var osPreferredUsernames = []string{
-	"NT AUTHORITY\\NetworkService",
 	"NT AUTHORITY\\LocalService",
+	"NT AUTHORITY\\NetworkService",
 }
 
 // Grant Read/Execute to S-1-15-2-2 (All Restricted Application Packages) to support LPAC
@@ -77,6 +84,18 @@ func (l *Launcher) osResolveAttributes() {
 		// when it is NOT running as a service. It will still obtain the token, but Edge will not start
 		// properly when launched this way.
 		token, err := api.LogonUser(user, dom, "", api.LOGON32_LOGON_SERVICE, api.LOGON32_PROVIDER_DEFAULT)
+		if err == nil {
+			// Strip the service token down to what a desktop browser has (os_windows_token.go). If
+			// that fails, the plain service token is still far better than SYSTEM, so keep it and
+			// say so where it will be seen.
+			restricted, rerr := leastPrivilegeToken(token)
+			if rerr == nil {
+				_ = token.Close()
+				token = restricted
+			} else {
+				l.logger.Warnf("could not restrict the %s token, using it unrestricted: %v", v, rerr)
+			}
+		}
 		if err == nil {
 			l.osAttributes.Username = v
 			l.osAttributes.Token = token

@@ -8,7 +8,6 @@ import (
 
 	"github.com/runZeroInc/go-rod/lib/defaults"
 	"github.com/runZeroInc/go-rod/lib/launcher/flags"
-	"github.com/runZeroInc/go-rod/lib/utils"
 	"github.com/runZeroInc/go-rod/pkg/got"
 )
 
@@ -39,19 +38,19 @@ func TestLaunchOptions(t *testing.T) {
 
 	defaults.Show = true
 	defaults.Devtools = true
-	inContainer = true
 
 	// restore
-	defer func() {
-		defaults.ResetWith("")
-		inContainer = utils.InContainer
-	}()
+	defer defaults.ResetWith("")
 
 	l := NewMust()
 
 	g.False(l.Has(flags.Headless))
 
-	g.True(l.Has(flags.NoSandbox))
+	// A container alone does not pre-empt the sandbox (see GetExecFlags); root launching as root
+	// does, so the assertion holds only for a non-root run.
+	if os.Geteuid() != 0 {
+		g.False(l.Has(flags.NoSandbox))
+	}
 
 	g.True(l.Has("auto-open-devtools-for-tabs"))
 }

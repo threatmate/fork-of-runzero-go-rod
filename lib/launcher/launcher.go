@@ -275,7 +275,16 @@ func GetExecFlags(conf *Browser) map[flags.Flag][]string {
 	if defaults.Devtools {
 		execFlags["auto-open-devtools-for-tabs"] = nil
 	}
-	if inContainer || conf.NoSandbox || (runtime.GOOS == "linux" && os.Geteuid() == 0 && conf.UID == 0) {
+	// Being in a container is NOT a reason to add --no-sandbox up front, for the same reason the
+	// restricted-userns sysctl is not (os_unix.go): whether the sandbox works depends on what the
+	// container permits, not on the fact of being in one. Measured with chrome-headless-shell in a
+	// root Alpine container whose seccomp profile allows user namespaces: with /.dockerenv present
+	// this line added --no-sandbox and the browser ran unsandboxed; with it removed the same
+	// container launched the browser sandboxed. A container that really cannot sandbox still gets
+	// --no-sandbox from cmd/webshot/chrome's retry, which in a container fires on any failed launch
+	// (not only on ErrNoSandbox), so nothing webshot launched before stops launching -- it is only
+	// no longer unsandboxed by assumption. A caller using this launcher directly gets no retry.
+	if conf.NoSandbox || (runtime.GOOS == "linux" && os.Geteuid() == 0 && conf.UID == 0) {
 		execFlags[flags.NoSandbox] = nil
 	}
 	// conf.Proxy is this launch's own setting; defaults.Proxy is the process-global one go-rod
