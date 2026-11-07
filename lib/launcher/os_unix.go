@@ -81,6 +81,11 @@ func (l *Launcher) getSysProcAttr(uid, gid int) (*syscall.SysProcAttr, error) {
 	// cannot survive a crashed/killed launcher.
 	setPdeathsig(v)
 	if os.Geteuid() == 0 && uid != 0 {
+		// A uid without a gid would leave the browser in group 0, able to write anything
+		// group-root-writable: the same hazard as the supplementary groups below.
+		if gid == 0 {
+			return nil, fmt.Errorf("refusing to run the browser as uid %d in group 0: set WithGID too", uid)
+		}
 		// Groups set to an empty list, not NoSetGroups: with NoSetGroups the child keeps the
 		// caller's supplementary groups, and a root caller usually carries group 0, which would
 		// leave the unprivileged browser able to write anything group-root-writable.

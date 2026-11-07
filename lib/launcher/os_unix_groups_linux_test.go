@@ -42,3 +42,18 @@ func TestDroppedUserKeepsNoSupplementaryGroups(t *testing.T) {
 		t.Errorf("the dropped child kept supplementary groups %v", g)
 	}
 }
+
+// TestDroppingToAUserWithoutAGroupIsRefused: Browser.GID defaults to 0, so a caller that sets only
+// a uid would get a browser in group 0. Runs only as root, where the drop happens.
+func TestDroppingToAUserWithoutAGroupIsRefused(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root, to drop privileges at all")
+	}
+	l := &Launcher{logger: logrus.NewEntry(logrus.New())}
+	if _, err := l.getSysProcAttr(65534, 0); err == nil {
+		t.Error("a drop to uid 65534 in group 0 was allowed")
+	}
+	if _, err := l.getSysProcAttr(0, 0); err != nil {
+		t.Errorf("staying root is not a drop: %v", err)
+	}
+}
