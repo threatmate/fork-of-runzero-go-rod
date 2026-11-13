@@ -8,6 +8,7 @@ import (
 
 	"github.com/runZeroInc/go-rod/lib/defaults"
 	"github.com/runZeroInc/go-rod/lib/launcher/flags"
+	"github.com/runZeroInc/go-rod/lib/utils"
 	"github.com/runZeroInc/go-rod/pkg/got"
 )
 
@@ -41,6 +42,12 @@ func TestLaunchOptions(t *testing.T) {
 
 	// restore
 	defer defaults.ResetWith("")
+
+	// Being in a container must not pre-empt the sandbox, so assert it as if in one rather than
+	// depending on where the test runs.
+	inContainer := utils.InContainer
+	utils.InContainer = true
+	defer func() { utils.InContainer = inContainer }()
 
 	l := NewMust()
 

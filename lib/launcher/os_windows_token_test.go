@@ -48,9 +48,18 @@ func TestLeastPrivilegeTokenIsMediumWithOnlyChangeNotify(t *testing.T) {
 	if err := windows.LookupPrivilegeValue(nil, windows.StringToUTF16Ptr("SeChangeNotifyPrivilege"), &changeNotify); err != nil {
 		t.Fatalf("LookupPrivilegeValue: %v", err)
 	}
+	found := false
 	for _, p := range (*windows.Tokenprivileges)(unsafe.Pointer(&buf[0])).AllPrivileges() {
 		if p.Luid != changeNotify {
 			t.Errorf("privilege LUID %v survived DISABLE_MAX_PRIVILEGE", p.Luid)
+			continue
 		}
+		found = true
+		if p.Attributes&windows.SE_PRIVILEGE_ENABLED == 0 {
+			t.Errorf("SeChangeNotifyPrivilege is not enabled (attributes 0x%x)", p.Attributes)
+		}
+	}
+	if !found {
+		t.Error("SeChangeNotifyPrivilege is missing from the restricted token")
 	}
 }
