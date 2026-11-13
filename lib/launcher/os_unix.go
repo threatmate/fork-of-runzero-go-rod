@@ -81,10 +81,18 @@ func (l *Launcher) getSysProcAttr(uid, gid int) (*syscall.SysProcAttr, error) {
 	// cannot survive a crashed/killed launcher.
 	setPdeathsig(v)
 	if os.Geteuid() == 0 && uid != 0 {
+		// A uid without a gid would leave the browser in group 0, able to write anything
+		// group-root-writable: the same hazard as the supplementary groups below.
+		if gid == 0 {
+			return nil, fmt.Errorf("refusing to run the browser as uid %d in group 0: set WithGID too", uid)
+		}
+		// Groups set to an empty list, not NoSetGroups: with NoSetGroups the child keeps the
+		// caller's supplementary groups, and a root caller usually carries group 0, which would
+		// leave the unprivileged browser able to write anything group-root-writable.
 		cred := &syscall.Credential{
-			Uid:         uint32(uid),
-			Gid:         uint32(gid),
-			NoSetGroups: true,
+			Uid:    uint32(uid),
+			Gid:    uint32(gid),
+			Groups: []uint32{},
 		}
 		v.Credential = cred
 	}
@@ -129,6 +137,22 @@ func (l *Launcher) osEnsureUserPermissionsBinary(binPath string) error {
 		if err != nil {
 			return err
 		}
+		// Skip the chmod only when it would change nothing, i.e. the binary is already exactly
+		// 0755 with no setuid, setgid or sticky bit. A chmod is not free even then: on an overlay
+		// filesystem it copies the whole file up into the writable layer first, and under gVisor
+		// (Cloud Run) that layer is memory. For chrome-headless-shell that was a 202 MiB copy,
+		// paid on the first launch as a dropped user in every container.
+		//
+		// Exactly 0755, not "readable and executable by everyone": the chmod also takes away
+		// group and other write and the setuid bits, and those must still go. (It does not change
+		// the owner, so a binary owned by the dropped user stays writable by it either way.)
+		//
+		// Stat rather than info: Walk Lstats its root, so for a symlinked binary info describes
+		// the link, whose mode is always 0777, and Chmod follows it to the target.
+		target, statErr := os.Stat(path)
+		if statErr == nil && target.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0o755 {
+			return nil
+		}
 		_ = os.Chmod(path, 0o755) //nolint:gosec
 		return nil
 	})
@@ -167,6 +191,13 @@ func (l *Launcher) osEnsureLeadingPathReadExec(src string) error {
 			return nil
 		}
 		cperm := st.Mode().Perm()
+		// Already traversable by everyone: leave it alone, for the same reason as the binary. The
+		// chmod below would only add bits, so skipping it removes nothing -- except that it would
+		// also clear a sticky or setgid bit, since cperm holds only the permission bits, and on
+		// /tmp, where the default profile lives, that is a bit worth keeping.
+		if cperm&0o111 == 0o111 {
+			continue
+		}
 		if err := os.Chmod(pname, cperm|0o111); err != nil { //nolint:gosec
 			l.logger.Errorf("failed to chmod path %s as %o: %s", pname, cperm|0o111, err)
 		}
