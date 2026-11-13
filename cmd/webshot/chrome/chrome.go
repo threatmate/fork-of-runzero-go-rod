@@ -21,6 +21,7 @@ import (
 	"github.com/runZeroInc/go-rod/lib/launcher"
 	"github.com/runZeroInc/go-rod/lib/launcher/flags"
 	"github.com/runZeroInc/go-rod/lib/proto"
+	"github.com/runZeroInc/go-rod/lib/utils"
 	"github.com/runZeroInc/go-rod/pkg/gson"
 	"github.com/sirupsen/logrus"
 )
@@ -371,7 +372,14 @@ TryAgain:
 	//  - https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md
 	//  - https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md
 	//
-	if errors.Is(err, launcher.ErrNoSandbox) && launchAttempts == 0 && !sandboxDisabled {
+	// - In a container, a sandboxed launch can fail without saying why: with a seccomp profile that
+	//   allows user namespaces but refuses the PID namespace, it dies of SIGTRAP and prints none of
+	//   the strings ErrNoSandbox matches (measured). The launcher no longer adds --no-sandbox just
+	//   for being in a container, so a container gets this one retry on any failure: what it
+	//   launched with before, as a floor.
+	//
+	sandboxFailure := errors.Is(err, launcher.ErrNoSandbox) || (err != nil && utils.InContainer)
+	if sandboxFailure && launchAttempts == 0 && !sandboxDisabled {
 		w.Logger.Warnf("chromium sandbox error detected, retrying launch with --no-sandbox")
 		opts = append(opts, launcher.WithNoSandbox(true))
 		launchAttempts++

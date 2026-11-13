@@ -39,19 +39,25 @@ func TestLaunchOptions(t *testing.T) {
 
 	defaults.Show = true
 	defaults.Devtools = true
-	inContainer = true
 
 	// restore
-	defer func() {
-		defaults.ResetWith("")
-		inContainer = utils.InContainer
-	}()
+	defer defaults.ResetWith("")
+
+	// Being in a container must not pre-empt the sandbox, so assert it as if in one rather than
+	// depending on where the test runs.
+	inContainer := utils.InContainer
+	utils.InContainer = true
+	defer func() { utils.InContainer = inContainer }()
 
 	l := NewMust()
 
 	g.False(l.Has(flags.Headless))
 
-	g.True(l.Has(flags.NoSandbox))
+	// A container alone does not pre-empt the sandbox (see GetExecFlags); root launching as root
+	// does, so the assertion holds only for a non-root run.
+	if os.Geteuid() != 0 {
+		g.False(l.Has(flags.NoSandbox))
+	}
 
 	g.True(l.Has("auto-open-devtools-for-tabs"))
 }
