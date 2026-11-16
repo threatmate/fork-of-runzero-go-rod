@@ -824,6 +824,11 @@ func (l *Launcher) Kill() {
 	// Browser does not have an API to tell if the children processes are ready.
 	utils.Sleep(1)
 
+	l.killNow()
+}
+
+// killNow kills the browser, its process group and any leftovers, without Kill's wait.
+func (l *Launcher) killNow() {
 	if l.PID() == 0 { // avoid killing the current process
 		return
 	}
@@ -861,9 +866,13 @@ func (l *Launcher) Cleanup() {
 		return
 	}
 
-	// Wait for the process goroutine to signal exit, then ensure kill and cleanup.
+	// Kill the whole group before waiting. Cancelling the context kills only the browser's own
+	// process; its children keep its stderr open, so Wait would sit out cmd.WaitDelay (1 s) for
+	// them, and Kill's own 1 s sleep came on top of that: 2 s on every Cleanup. Then, once the
+	// process goroutine has signalled exit, kill again for anything forked in between.
+	l.killNow()
 	<-l.exit
-	l.Kill()
+	l.killNow()
 	if dir := l.Get(flags.UserDataDir); dir != "" {
 		_ = os.RemoveAll(dir)
 	}
