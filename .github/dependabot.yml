@@ -13,3 +13,15 @@ updates:
     dev-dependencies:
       patterns:
         - "*" 
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: weekly
+    day: monday
+  cooldown:
+    default-days: 7
+  groups:
+    github-actions:
+      patterns:
+        - "*"
+  open-pull-requests-limit: 5
